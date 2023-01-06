@@ -1,7 +1,9 @@
+require('dotenv').config();
+
 const express = require('express');
 const { MongoClient } = require('mongodb');
 
-const client = new MongoClient(getFromConfig('MONGODB_URL'));
+const client = new MongoClient(process.env['MONGODB_URL']);
 
 const app = express();
 
@@ -29,7 +31,7 @@ app.post('/register', async function(req, res) {
 
 async function main() {
     await client.connect();
-    app.listen(4000, () => {
+    app.listen(parseInt(process.env['PORT']), () => {
         console.log("server started");
     });
 }
