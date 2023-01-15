@@ -2,6 +2,9 @@ import React from 'react';
 import FileForm from './FileForm';
 import FileList from './FileList';
 import './App.css';
+import BackGround1 from './pic2.svg';
+import BackGround2 from './pic1.svg';
+import { ROOT_PATH } from './Constants';
 
 class App extends React.Component {
 
@@ -10,29 +13,36 @@ class App extends React.Component {
     this.fileList = React.createRef();
     this.fileForm = React.createRef();
   }
-  /* Promise<TaskID> */ uploadFile(file, callback) {
-        // return fetch('dummyUrl', {
-        //     method: 'POST',
-        //     body: file,
-        // }).then((response) => {
-        //     return response.body.taskID;
-        // });
+  uploadFile(file) {
+    let formData = new FormData();
+    formData.append('file', file);
+    const request = {
+      method: 'POST',
+      body: formData
+    };
+    return fetch(`${ROOT_PATH}/tasks`, request);
+  }
 
-        return new Promise((resolve) => {
-          setTimeout(() => {
-              resolve(Math.floor(Math.random() * 99999999))
-          }, 500);
-      });
+  getExtension(filename) {
+    return filename.split('.').pop()
   }
 
   handleSubmit(event) {
       event.preventDefault();
       const file = event.target.file.files[0];
       if (file === undefined) {
+        this.fileForm.current.setState({errorMessage : 'Your input is empty'});
         return;
       }
-      this.uploadFile(file).then((taskId) => {
-          this.fileList.current.addProcessingFiles(file.name, taskId);
+      this.fileForm.current.setState({errorMessage : ''});
+      this.uploadFile(file).then((res) => {
+        if(res.ok) {
+          return res.json();
+        }
+        return res.text().then(text => { throw text })
+      }).then((data)=> {this.fileList.current.addProcessingFiles(file.name, data.taskID);})
+      .catch((error) => {
+        this.fileForm.current.setState({errorMessage : error});
       });
       event.target.reset();
       // let req = new XMLHttpRequest();
@@ -44,6 +54,9 @@ class App extends React.Component {
     return (
       <div className="App">
         <FileForm ref={this.fileForm} handleSubmit={(event)=> {this.handleSubmit(event)}}/>
+        <br/>
+        <img className="background1" src={BackGround1} alt="symbol"></img>
+        <img className="background2" src={BackGround2} alt="symbol"></img>
         <FileList ref={this.fileList}/>
       </div>
     );

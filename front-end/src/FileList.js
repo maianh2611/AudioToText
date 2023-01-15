@@ -1,6 +1,10 @@
-import Nav from 'react-bootstrap/Nav';
-import { Table } from 'react-bootstrap';
 import React from 'react';
+import './FileList.css';
+import Button from 'react-bootstrap/esm/Button';
+import Spinner from 'react-bootstrap/Spinner';
+import 'bootstrap-icons/font/bootstrap-icons.css';
+import { Table } from 'react-bootstrap';
+import { ROOT_PATH } from './Constants';
 
 class FileList extends React.Component {
     constructor(props) {
@@ -8,39 +12,28 @@ class FileList extends React.Component {
         this.state = {
             completedFiles : [],
             processingFiles : [],
-            errorFiles: []
+            errorFiles: [],
         }
     }
-    checkFileStatus(file) {
-        let temp = Math.random();
-        if (temp <= 0.4) {
-            file.status = "test.com/" + file.taskID;
-        } else if (temp > 0.4 && temp <= 0.6) {
-            file.status = "Error";
-        } else {
-            file.status = "Transcribing";
-        }
-        return new Promise((resolve) => {
-            setTimeout(() => {
-                resolve(file)
-            }, 500);
-        });
+    checkFileStatus(taskID) {
+        const url = `${ROOT_PATH}/tasks/${taskID}`; 
+        return fetch(url)
     }
 
     updateState(completedFiles, newErrorFiles) {
         console.log("updateState");
-        if (completedFiles.length === 0) {
+        if (completedFiles.length === 0 && newErrorFiles.length === 0) {
             return;
         }
         let newprocessingFileList = this.state.processingFiles.slice();
         newprocessingFileList = newprocessingFileList.filter(file => !completedFiles.find(f => file.taskID === f.taskID));
         newprocessingFileList = newprocessingFileList.filter(file => !newErrorFiles.find(f => file.taskID === f.taskID));
-        const newCompletedFileList = this.state.completedFiles.slice();
+        let newCompletedFileList = this.state.completedFiles.slice();
         completedFiles.forEach(file => newCompletedFileList.push(file));
-        const newErrorFileList = this.state.errorFiles.slice();
+        let newErrorFileList = this.state.errorFiles.slice();
         newErrorFiles.forEach(file => newErrorFileList.push(file));
-        this.setState({completedFiles: newCompletedFileList, processingFiles: newprocessingFileList, errorFiles: newErrorFileList}, () => localStorage.setItem("state", JSON.stringify(this.state)));
-        //console.log(completedFiles);
+        
+        this.setState({completedFiles: newCompletedFileList, processingFiles: newprocessingFileList, errorFiles: newErrorFileList}, () => {console.log(this.state.processingFiles);localStorage.setItem("state", JSON.stringify(this.state))});
     }
 
     updateFileStatus() {
@@ -53,38 +46,32 @@ class FileList extends React.Component {
         let newCompletedFiles = [];
         let newErrorFiles = [];
         this.state.processingFiles.forEach((file) => {
-            promises.push(this.checkFileStatus(file)
-            .then(() => {
-                if (file.status === "test.com/" + file.taskID) {
+            promises.push(this.checkFileStatus(file.taskID)
+            .then((res) => {return res.json();}).then((data) =>{file.status = data.status}).then(()=>{
+                if (file.status === "COMPLETED") {
                     newCompletedFiles.push(file);
-                } else if (file.status === "Error") {
+                } else if (file.status === "FAILED") {
                     newErrorFiles.push(file);
                 }
             }));
         })
         // Wait until all promises returns, then update the state and restart the interval
         Promise.all(promises).then(() => this.updateState(newCompletedFiles, newErrorFiles)).then(() => this.timerID = (setInterval(() => this.updateFileStatus(), 2000))); 
-        
-        /*for (let i = 0; i < this.state.processingFiles.length; i++) {
-            const currentProcess = this.state.processingFiles[i];
-            this.checkFileStatus(currentProcess.taskID).then((status) => {
-                this.getNewCompletedFile(status);   
-            });
-        }*
-        /*.then((completedFiles) => {
-            this.updateState(completedFiles)
-        });*/
+    }
+
+    resetTable(){
+        localStorage.clear();
+        this.setState({completedFiles : [], processingFiles : [], errorFiles: []});
     }
 
     componentDidMount() {
-        this.timerID = setInterval(() => this.updateFileStatus(), 2000);
+        this.timerID = setInterval(() => this.updateFileStatus(), 10000);
         const previousState = localStorage.getItem("state");
         if (previousState !== "") {
             this.setState(JSON.parse(previousState))
         } 
-        //
-        console.log(localStorage.getItem("state"));
     }
+
     componentWillUnmount() {
         clearInterval(this.timerID);
     }
@@ -92,54 +79,67 @@ class FileList extends React.Component {
     
     addProcessingFiles(fileName, taskID) {
         const newProcessingFiles = this.state.processingFiles.slice();
-        newProcessingFiles.push({name: fileName, taskID: taskID, status: "Transcribing"});
-        this.setState({processingFiles: newProcessingFiles},() => localStorage.setItem("state", JSON.stringify(this.state)));
+        const created = new Date().toLocaleString() + "";
+        newProcessingFiles.push({name: fileName, taskID: taskID, status: "In progress", uploadedTime: created});
+        this.setState({processingFiles: newProcessingFiles}, () => localStorage.setItem("state", JSON.stringify(this.state)));
     }        
 
-
-
     render() {
-        const completedFiles = this.state.completedFiles;
-        const completeFilesList = completedFiles.map((completedFile) =>
-            <tr key={completedFile.taskID.toString()}>
-                <td>
-                    <Nav.Item>
-                        <Nav.Link href={completedFile.status} download>{completedFile.name}</Nav.Link>
-                    </Nav.Item>    
-                </td>
-                <td>Completed</td>
-            </tr>
+        const totalFiles = this.state.completedFiles.concat(this.state.errorFiles, this.state.processingFiles);
+        totalFiles.sort(function(a,b){
+            return new Date(b.uploadedTime) - new Date(a.uploadedTime);
+        });
+        const totalFileList = totalFiles.map((file) =>
+        <tr key={file.taskID.toString()}>
+            <td>{
+                // If file is completed, display with a hyperlink, otherwise just display the filename
+                    /*if*/(file.status === 'COMPLETED') ? 
+                        <a className="text-primary" href={`${ROOT_PATH}/tasks/${file.taskID}/transcript`}>{file.name}</a> :
+                    /*else*/ 
+                        file.name
+                }       
+            </td>
+            {
+                /*if*/(file.status === 'COMPLETED') ? 
+                    <td className="text-success"><i className="bi bi-check"></i>{file.status.charAt(0)+ file.status.slice(1).toLowerCase()}</td> :
+                /*else*/
+                    (
+                    /*if*/(file.status === 'FAILED') ? 
+                        <td className="text-danger"><i className="bi bi-x"></i>{file.status.charAt(0)+ file.status.slice(1).toLowerCase()}</td> :
+                    /*else*/ 
+                        <td className="text-primary">
+                        <Spinner
+                        as="span"
+                        animation="border"
+                        size="sm"
+                        role="status"
+                        aria-hidden="true"
+                        />
+                        In progress
+                        </td>
+                    )
+            }
+            <td>{file.uploadedTime}</td>
+        </tr>
         );
-        const processingFiles = this.state.processingFiles;
-        const processingFilesList = processingFiles.map((processingFile) =>
-            <tr key={processingFile.taskID.toString()}>
-                <td>{processingFile.name}</td>
-                <td>{processingFile.status}</td>
-            </tr>
-        );
-        const errorFiles = this.state.errorFiles;
-        const errorFilesList = errorFiles.map((errorFile) =>
-            <tr key={errorFile.taskID.toString()}>
-                <td>{errorFile.name}</td>
-                <td>{errorFile.status}</td>
-            </tr>
-        );
+        
         return (
-            <div>
-                <h2>mai anh an cut</h2>
-                <Table striped bordered hover>
+            <div className='container'>
+                <h2>Files To Trancribe</h2>
+                <br/>
+                <Table striped bordered hover size="sm" className="table">
                     <thead>
                         <tr>
                             <th>File Name</th>
-                            <th>Transcribing Progress</th>
+                            <th>Status</th>
+                            <th>Created</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {completeFilesList}
-                        {errorFilesList}
-                        {processingFilesList}
+                        {totalFileList}
                     </tbody>
                 </Table>
+                <Button className="resetButton float-end" variant="outline-primary" onClick={()=> {this.resetTable()}}>Clear Table</Button>
             </div>
         );
     }
